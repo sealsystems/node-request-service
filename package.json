@@ -21,16 +21,16 @@
   },
   "main": "lib/requestService.js",
   "dependencies": {
-    "@sealsystems/connect-service": "3.0.17",
+    "@sealsystems/connect-service": "3.1.0",
     "@sealsystems/log": "2.3.3",
     "getenv": "1.0.0",
-    "retry": "0.12.0"
+    "retry": "0.13.1"
   },
   "devDependencies": {
-    "@sealsystems/eslint-config-es": "3.6.8",
+    "@sealsystems/eslint-config-es": "3.7.0",
     "@sealsystems/mocha": "4.1.11",
     "@sealsystems/semantic-release": "4.3.7",
-    "nodeenv": "3.0.68",
+    "nodeenv": "3.0.71",
     "proxyquire": "2.1.3"
   },
   "repository": {
