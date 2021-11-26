@@ -1,3 +1,10 @@
+## 4.0.26 (2021-11-26)
+
+### Chores
+
+
+updated deps ([e8b940b](https://github.com/sealsystems/node-request-service/commit/e8b940b))
+
 ## 4.0.25 (2021-05-31)
 
 ### Chores
