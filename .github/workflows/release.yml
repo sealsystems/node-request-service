@@ -221,10 +221,40 @@ jobs:
         if: github.ref != 'refs/heads/master'
         run: |
           echo "Patching package.json ..."
-          sed -i 's|"registry": "https://npm.pkg.github.com"|"registry": "https://npm.pkg.github.com", "tag": "bugfix"|' package.json
+          jq '. * { publishConfig: { tag: "bugfix" }}' < package.json > package.json.new
+          mv package.json.new package.json
 
       - name: Trigger release
-        run: npm run release
+        run: |
+          npm i --no-save @sealsystems/semantic-release@latest
+          npm run release
         env:
           # Use personal access token, must be set for *each step*
           NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
+
+      # # Debug with RDP
+      # - name: Install Ngrok
+      #   run: |
+      #     Invoke-WebRequest https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-windows-amd64.zip -OutFile ngrok.zip
+      #     Expand-Archive ngrok.zip
+      #     .\ngrok\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
+      #   env:
+      #     NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+      # - name: Enable TS and generate login password
+      #   run: |
+      #     # Generate password
+      #     Add-Type -AssemblyName System.Web
+      #     $env:loginpass = [System.Web.Security.Membership]::GeneratePassword(8,2)
+      #     # Install TS
+      #     Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server'-name "fDenyTSConnections" -Value 0
+      #     Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+      #     Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+      #     Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "$env:loginpass" -Force)
+      #     # Print password
+      #     Write-Host "---------------------------------------"
+      #     Write-Host "Use the following credentials to login:"
+      #     Write-Host "Username: runneradmin"
+      #     Write-Host "Password: $env:loginpass"
+      #     Write-Host "---------------------------------------"
+      # - name: Create Ngrok Tunnel
+      #   run: .\ngrok\ngrok.exe tcp 3389
