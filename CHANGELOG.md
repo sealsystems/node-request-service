@@ -1,3 +1,10 @@
+## 4.0.28 (2022-02-08)
+
+### Chores
+
+
+update deps ([610259c](https://github.com/sealsystems/node-request-service/commit/610259c))
+
 ## 4.0.27 (2022-02-07)
 
 ### Chores
