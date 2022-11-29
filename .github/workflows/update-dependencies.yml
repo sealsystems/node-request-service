@@ -1,0 +1,159 @@
+name: update-dependencies
+
+on:
+  schedule:
+    # Only on Saturday
+    - cron: '34 22 * * 6'
+  workflow_dispatch:
+    # No inputs needed
+
+env:
+  LOG_LEVELS: fatal
+  TLS_UNPROTECTED: world
+
+jobs:
+  Update-Dependencies:
+    runs-on: ubuntu-22.04
+
+    services:
+      mongo:
+        image: ghcr.io/sealsystems/mongodb-rs:4.4.4
+        credentials:
+          username: ${{ github.actor }}
+          password: ${{ secrets.CI_TOKEN }}
+        ports:
+          - 27017:27017
+      consul:
+        image: consul:1.7.4
+        ports:
+          - 8500:8500
+
+    steps:
+      - uses: actions/checkout@v3
+        # Use personal access token for cloning (and later pushing) code
+        with:
+          token: ${{ secrets.CI_TOKEN }}
+
+      - name: Store name of base branch
+        run: echo "BASE_BRANCH=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
+
+      - name: Prepare branch weekly/update-dependencies
+        run: |
+          git fetch --quiet
+          git checkout -B weekly/update-dependencies
+          git reset --hard ${GITHUB_REF#refs/heads/}
+
+      - name: Use Node.js 16.18.1
+        uses: actions/setup-node@v3
+        with:
+          node-version: 16.18.1
+          registry-url: https://npm.pkg.github.com/
+          scope: '@sealsystems'
+
+      - name: Cache Node.js modules
+        uses: actions/cache@v3
+        env:
+          cache-name: cache-node-modules
+        with:
+          # npm cache files are stored in `~/.npm` on Linux/macOS
+          path: ~/.npm
+          key: ${{ runner.os }}-${{ env.cache-name }}-16.18.1-${{ hashFiles('**/package-lock.json') }}
+
+      - name: Copy .npmrc into project folder to allow npm-check-updates to access private modules
+        run: cp "${NPM_CONFIG_USERCONFIG}" .
+
+      - name: Install npm-check-updates
+        run: npm install -g npm-check-updates
+        env:
+          # Use personal access token, must be set for *each step*
+          NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
+
+      - name: Run ncu --doctor to update production dependencies from @sealsystems to the latest patch version without bumping the major version
+        run: |
+          ncu --doctor --upgrade --dep prod --target patch --filter '/^@sealsystems/'
+          if git diff --exit-code package.json; then
+            echo "No sealsystems patch dependencies updates found"
+          else
+            echo "Patch sealsystems dependencies updates found, prefix PR with fix"
+            echo "PR_TITLE=fix: Update sealsystems dependencies (patch only)" >> $GITHUB_ENV
+            git add package.json
+          fi
+        env:
+          # Use personal access token, must be set for *each step*
+          NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
+
+      - name: Run ncu --doctor to update production dependencies from @sealsystems to the latest minor version without bumping the major version
+        run: |
+          ncu --doctor --upgrade --dep prod --target minor --filter '/^@sealsystems/'
+          # check if package.json was modified (again) after doctor --target minor execution.
+          if [ -z `git ls-files -m | grep package.json` ]; then
+            echo "No sealsystems minor dependencies updates found"
+          else
+            echo "Minor sealsystems dependencies updates found, prefix PR with feat"
+            echo "PR_TITLE=feat: Update sealsystems dependencies (patch/minor only)" >> $GITHUB_ENV
+          fi
+        env:
+          # Use personal access token, must be set for *each step*
+          NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
+
+      - name: Run ncu --doctor to update development dependencies to the latest version (skipping @sealsystems/semantic-release and @sealsystems/eslint-config-es that cannot be tested here)
+        run: ncu --doctor --upgrade --dep dev --filter '/^(?!@sealsystems\/semantic-release|@sealsystems\/eslint-config-es).*/'
+        env:
+          # Use personal access token, must be set for *each step*
+          NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
+
+      - name: Run ncu --doctor to update development dependencies to the newest minor version (including failed tries of a major update)
+        run: ncu --doctor --upgrade --dep dev --target minor
+        env:
+          # Use personal access token, must be set for *each step*
+          NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
+
+      - name: Check for modifications other than package-lock.json
+        run: |
+          git add package.json
+          # Check for changes package.json
+          if git diff --cached --exit-code; then
+            echo "No relevant changes made. Skip creating pull request."
+          else
+            git add package-lock.json
+            echo "CREATE_PR=1" >> $GITHUB_ENV
+          fi
+
+      - name: Commit changes into branch weekly/update-dependencies
+        if: ${{ env.CREATE_PR == '1' }}
+        run: |
+          # Commit and push changes
+          git config --local user.email "com.git@sealsystems.de"
+          git config --local user.name "${GITHUB_ACTOR}"
+          git commit -m "Update @sealsystems dependencies"
+          git push --force origin weekly/update-dependencies
+
+      - name: Create pull request
+        if: ${{ env.CREATE_PR == '1' }}
+        run: |
+          # Only create a new PR if there is not already another one
+          if gh pr list | grep -q "weekly/update-dependencies"; then
+            echo "PR already exists. Skip creating a new one."
+            exit 0
+          fi
+
+          if [ -n "" ]; then
+            reviewerOption="--reviewer "
+          fi
+
+          gh pr create \
+          --base "${BASE_BRANCH}" \
+          --title "${PR_TITLE:-Update dependencies}" \
+          --body 'Dependencies of this project are outdated.
+
+          The following updates have been made:
+
+          - Production dependencies from the `@sealsystems` namespace: The latest *minor* versions
+          - Development dependencies: The latest versions
+
+          If a major update broke the tests, a minor update was tried.
+
+          This pull request will be merged automatically if there are no conflicts.' \
+          ${reviewerOption}
+        env:
+          GITHUB_TOKEN: ${{ secrets.CI_TOKEN }}

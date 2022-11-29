@@ -1,0 +1,3 @@
+Cmnd_Alias <%= name-sudoers %>_CMNDS = /bin/systemctl start <%= name %>,/bin/systemctl start <%= name %>.service,/bin/systemctl stop <%= name %>,/bin/systemctl stop <%= name %>.service,/bin/systemctl status <%= name %>,/bin/systemctl status <%= name %>.service
+
+%seal ALL=(ALL) NOPASSWD: <%= name-sudoers %>_CMNDS

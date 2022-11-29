@@ -1,0 +1,19 @@
+{
+  "consul": {
+    "address": "127.0.0.1:8500",
+    "ssl": {
+      "enabled": true,
+      "verify": false
+    },
+    "token": "INSECURE_ACL_MASTER_TOKEN",
+    "retry": {
+      "attempts": 0
+    }
+  },
+  "sanitize": true,
+  "upcase": true,
+  "vault": {
+    "renew_token": false
+  },
+  "kill_signal": "SIGTERM"
+}

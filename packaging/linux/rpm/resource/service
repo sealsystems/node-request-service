@@ -1,0 +1,16 @@
+[Unit]
+Description=<%= description %>
+After=network-online.target
+
+[Service]
+Type=simple
+User=seal
+Group=seal
+ExecStart=/opt/seal/<%= name %>/start.sh
+KillMode=control-group
+Restart=always
+RestartSec=2
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target

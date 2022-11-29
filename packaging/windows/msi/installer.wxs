@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:SystemTools="http://schemas.appsecinc.com/wix/SystemToolsExtension"
+     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
+
+  <Product Id="*"
+    UpgradeCode="$(env.UPGRADE_CODE)"
+    Language='1033'
+    Codepage='1252'
+    Version='$(env.MSI_VERSION)'
+    Name="$(env.PACKAGE_NAME) $(env.MSI_VERSION)"
+    Manufacturer='$(env.AUTHOR_NAME)'>
+
+    <Package Id='*'
+      Description="$(env.PACKAGE_DESCRIPTION)"
+      Comments='$(env.AUTHOR_NAME)'
+      Manufacturer='$(env.AUTHOR_NAME)'
+      InstallScope='perMachine'
+      InstallerVersion='200'
+      Compressed='yes'
+      Languages='1033'
+      SummaryCodepage='1252'
+      Platform='x64'
+    />
+
+    <MajorUpgrade
+      DowngradeErrorMessage="A newer version of $(env.PACKAGE_NAME) is already installed."
+      AllowSameVersionUpgrades="yes"
+      IgnoreRemoveFailure="yes"
+      MigrateFeatures="yes"
+      Schedule="afterInstallInitialize"
+    />
+
+    <Media Id='1' EmbedCab='yes' Cabinet="main.cab" />
+
+    <WixVariable Id="WixUILicenseRtf" Value="packaging\windows\msi\resource\LICENSE.rtf" />
+    <WixVariable Id="WixUIBannerBmp" Value="packaging\windows\msi\resource\images\msi-banner.bmp" />
+    <WixVariable Id="WixUIDialogBmp" Value="packaging\windows\msi\resource\images\msi-welcome.bmp" />
+
+    <Icon Id="icon.ico" SourceFile="packaging\windows\msi\resource\images\logo.ico"/>
+    <Property Id="ARPPRODUCTICON" Value="icon.ico" />
+    <Property Id="ARPHELPLINK" Value="http://sos.sealsystems.de" />
+    <Property Id="ARPURLINFOABOUT" Value="$(env.AUTHOR_URL)" />
+
+    <Property Id="MSIRESTARTMANAGERCONTROL" Value="Disable" />
+    <Property Id="MSIUSEREALADMINDETECTION" Value="1" />
+
+    <Property Id="ACCOUNT" Value="NT Authority\LocalService" />
+
+    <Property Id="SERVICE_NAME" Value="$(env.SERVICE_NAME)" />
+    <Property Id="SERVICE_TAGS" Value="$(env.SERVICE_TAGS)" />
+
+    <Property Id="REINSTALLMODE" Value="vdmus" />
+
+    <Directory Id='TARGETDIR' Name='SourceDir'>
+      <Directory Id='ProgramFiles64Folder' Name='PFiles'>
+        <Directory Id='CompanyFolder' Name='$(env.COMPANY_FOLDER)'>
+          <Directory Id='INSTALLDIR' Name='$(env.PACKAGE_NAME)' />
+        </Directory>
+      </Directory>
+      <Directory Id="CommonAppDataFolder">
+        <Directory Id="CompanyAppDataFolder" Name="$(env.COMPANY_FOLDER)">
+          <Directory Id="CONFIGDIR" Name="config">
+            <Directory Id="TLSDIR" Name="tls" />
+          </Directory>
+          <Directory Id="LOGDIR" Name="log" />
+        </Directory>
+      </Directory>
+    </Directory>
+
+    <Binary Id="_7za" SourceFile="temp\7za.exe" />
+
+    <!-- Custom Actions to cleanup node_modules dir and re-create it with contents of node_modules.zip -->
+
+    <CustomAction Id="cleanup_node_modules" Directory="INSTALLDIR"
+      ExeCommand="cmd.exe /C &quot;rmdir /Q /S node_modules&quot;"
+      Execute="deferred" Return="ignore" HideTarget="no" Impersonate="no" />
+
+    <CustomAction Id="extract_node_modules" BinaryKey="_7za"
+      ExeCommand="x -aoa -o&quot;[INSTALLDIR]&quot; &quot;[INSTALLDIR]node_modules.zip&quot;"
+      Execute="deferred" Return="check" HideTarget="no" Impersonate="no" />
+
+    <!-- Custom Actions to rollback changes to node_modules dir. Basically swaps the two actions above -->
+
+    <CustomAction Id="cleanup_node_modules_rollback" BinaryKey="_7za"
+      ExeCommand="x -aoa -o&quot;[INSTALLDIR]&quot; &quot;[INSTALLDIR]node_modules.zip&quot;"
+      Execute="rollback" Return="check" HideTarget="no" Impersonate="no" />
+
+    <CustomAction Id="extract_node_modules_rollback" Directory="INSTALLDIR"
+      ExeCommand="cmd.exe /C &quot;rmdir /Q /S node_modules&quot;"
+      Execute="rollback" Return="ignore" HideTarget="no" Impersonate="no" />
+
+    <InstallExecuteSequence>
+      <Custom Action="cleanup_node_modules" Before="RemoveFiles" />
+      <Custom Action="cleanup_node_modules_rollback" Before="cleanup_node_modules" />
+      <!-- Extract node_modules.zip only on install, not uninstall -->
+      <Custom Action="extract_node_modules" After="InstallFiles">NOT Installed AND NOT REMOVE</Custom>
+      <Custom Action="extract_node_modules_rollback" Before="extract_node_modules" />
+    </InstallExecuteSequence>
+
+    <Feature Id='Complete' Level='1'>
+      <ComponentGroupRef Id='service' />
+
+      <Component Id="node_component" Guid="*" Directory="INSTALLDIR">
+        <File Id="node" KeyPath="yes" Source="temp\node.exe" />
+        <!-- Add size of extracted node_modules folder. -->
+        <ReserveCost Id="node_modules_size" RunLocal="$(env.NODE_MODULES_SIZE)" RunFromSource="$(env.NODE_MODULES_SIZE)" />
+      </Component>
+
+      <Component Id="envconsul_component" Guid="*" Directory="INSTALLDIR">
+        <File Id="envconsul" KeyPath="yes" Source="temp\envconsul.exe" />
+      </Component>
+
+      <Component Id="runbat_component" Guid="*" Directory="INSTALLDIR">
+        <File Id="runbat" KeyPath="yes" Source="packaging\windows\msi\resource\run.bat" />
+        <SystemTools:TemplateFile Id="runbat_process_component" Source="[#runbat]" Target="[INSTALLDIR]run.bat" ExecuteOnInstall="yes">
+          <SystemTools:TemplateFileProperty Id="CONFIGDIR_property" Name="CONFIGDIR" Value="[CONFIGDIR]" />
+        </SystemTools:TemplateFile>
+      </Component>
+
+      <Component Id="envconsul_config_component" Guid="*" Directory="CONFIGDIR" Permanent="yes" NeverOverwrite="yes">
+        <File Id="envconsul_config" KeyPath="yes" Source="packaging\windows\msi\resource\envconsul.json" />
+      </Component>
+
+      <ComponentGroupRef Id='MainComponentGroup' />
+
+      <Component Id="config_component" Guid="22b022d5-894d-46a5-88af-a0b823481ef7" Directory="CONFIGDIR">
+        <CreateFolder>
+          <util:PermissionEx User="Administrators" GenericAll="yes" />
+        </CreateFolder>
+      </Component>
+
+      <Component Id="logfile_component" Guid="B036A9B1-E9CC-46BF-A1B6-667659B52052" Directory="LOGDIR">
+        <CreateFolder />
+      </Component>
+    </Feature>
+
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
+    <Property Id="WIXUI_LOGDIR" Value="LOGDIR" />
+
+    <UIRef Id="WixUI" />
+
+  </Product>
+</Wix>
