@@ -1,0 +1,8 @@
+.git/
+.nyc_output/
+node_modules/
+output/
+packaging/
+# Allow resources to be added to container images
+!packaging/linux/docker/resource
+test/

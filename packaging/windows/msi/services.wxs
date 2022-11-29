@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
+
+  <Fragment>
+    <ComponentGroup Id="service">
+      <Component Id="tcp_component" Guid="afdfe4db-c1a7-4938-a6d2-c6803d3a33b4" Directory="CompanyFolder">
+        <!-- Tweak TCP/IP parameters -->
+        <RegistryKey Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\Tcpip\Parameters">
+          <RegistryValue Name="TcpNumConnections" Value="16777214" Type="integer" />
+          <RegistryValue Name="TcpTimedWaitDelay" Value="30" Type="integer" />
+          <RegistryValue Name="MaxFreeTcbs" Value="100000" Type="integer" />
+          <RegistryValue Name="MaxHashTableSize" Value="32768" Type="integer" />
+          <RegistryValue Name="MaxUserPort" Value="65534" Type="integer" />
+        </RegistryKey>
+      </Component>
+
+      <Component Id="nssm_component" Guid="*" Directory="INSTALLDIR">
+        <File Id="nssm" KeyPath="yes" Source="temp\nssm.exe" />
+
+        <RemoveFile Id="PurgeLogfiles" Directory="LOGDIR" Name="$(env.PACKAGE_NAME)*" On="uninstall" />
+
+        <util:User Id="UpdateUserLogonAsService" UpdateIfExists="yes" CreateUser="no" Name="[ACCOUNT]" LogonAsService="yes" />
+
+        <ServiceInstall Id="ServiceInstall"
+          Account="[ACCOUNT]"
+          Password="[PASSWORD]"
+          ErrorControl="normal"
+          Name="$(env.PACKAGE_NAME)"
+          Start="auto"
+          Type="ownProcess"
+          Vital="yes"
+          Description="$(env.PACKAGE_DESCRIPTION)"
+          DisplayName="$(env.PACKAGE_NAME)">
+          <ServiceConfig OnInstall="yes" OnReinstall="yes" DelayedAutoStart="no" />
+        </ServiceInstall>
+
+        <ServiceControl Id="ControlService"
+          Name="$(env.PACKAGE_NAME)"
+          Wait="yes"
+          Stop="both"
+          Remove="uninstall"
+        />
+
+        <RegistryKey Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\$(env.PACKAGE_NAME)">
+          <RegistryKey Key="Parameters">
+            <RegistryValue Name="AppDirectory" Value="[INSTALLDIR]" Type="expandable" />
+            <RegistryValue Name="Application" Value="[INSTALLDIR]run.bat" Type="expandable" />
+            <!-- 'AppParameters' must exists, even if empty. -->
+            <RegistryValue Name="AppParameters" Value="&lt; nul" Type="expandable" />
+
+            <RegistryValue Name="AppEnvironmentExtra" Type="multiString">
+              <MultiStringValue>NODE_ENV=production</MultiStringValue>
+              <MultiStringValue>SERVICE_NAME=[SERVICE_NAME]</MultiStringValue>
+              <MultiStringValue>SERVICE_TAGS=[SERVICE_TAGS]</MultiStringValue>
+            </RegistryValue>
+
+            <RegistryValue Name="AppStdout" Value="[LOGDIR]$(env.PACKAGE_NAME).log" Type="expandable" />
+            <RegistryValue Name="AppStderr" Value="[LOGDIR]$(env.PACKAGE_NAME).log" Type="expandable" />
+            <RegistryValue Name="AppRotateFiles" Value="1" Type="integer" />
+            <RegistryValue Name="AppRotateOnline" Value="1" Type="integer" />
+
+            <!-- Rotate after 10 MB -->
+            <RegistryValue Name="AppRotateBytes" Value="10485760" Type="integer" />
+            <RegistryValue Name="AppStdoutCopyAndTruncate" Value="1" Type="integer" />
+            <RegistryValue Name="AppStderrCopyAndTruncate" Value="1" Type="integer" />
+            <RegistryValue Name="AppRotateDelay" Value="1000" Type="integer" />
+
+            <!-- Graceful Shutdown, wait for max 3 * 30s -->
+            <RegistryValue Name="AppStopMethodConsole" Value="30000" Type="integer" />
+            <RegistryValue Name="AppStopMethodThreads" Value="30000" Type="integer" />
+            <RegistryValue Name="AppStopMethodWindow" Value="30000" Type="integer" />
+
+            <RegistryKey Key="AppExit">
+              <RegistryValue Type="string" Value="Restart" />
+            </RegistryKey>
+
+            <!-- Event list for (non-existing) hooks to prevent error event log message -->
+            <RegistryKey Key="AppEvents">
+              <RegistryKey Key="Start">
+                <RegistryValue Type="string" Value="Default Value"/>
+              </RegistryKey>
+              <RegistryKey Key="Stop">
+                <RegistryValue Type="string" Value="Default Value"/>
+              </RegistryKey>
+              <RegistryKey Key="Exit">
+                <RegistryValue Type="string" Value="Default Value"/>
+              </RegistryKey>
+            </RegistryKey>
+          </RegistryKey>
+        </RegistryKey>
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>

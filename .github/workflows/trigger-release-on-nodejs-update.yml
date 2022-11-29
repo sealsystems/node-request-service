@@ -1,0 +1,40 @@
+name: trigger-release-on-nodejs-update
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - package.json
+
+jobs:
+  Trigger-Release:
+    name: Trigger release on Node.js update
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.ref }}
+          token: ${{ secrets.CI_TOKEN }}
+          # We need the 2 commits for our diff
+          fetch-depth: "2"
+
+      - name: Get new Node.js version from package.json
+        run: |
+          # NEW_NODE_VERSION will be empty if 'git diff' does not show a new version.
+          NEW_NODE_VERSION=$(git diff HEAD~1..HEAD -- package.json | grep '+    "node":' | grep -oP '\d+\.\d+\.\d+') || true
+          echo "NEW_NODE_VERSION=${NEW_NODE_VERSION}" >> $GITHUB_ENV
+
+      - name: Trigger release
+        if: ${{ env.NEW_NODE_VERSION }}
+        run: |
+          echo "New Node.js version found: ${NEW_NODE_VERSION}"
+          echo "Triggering release."
+
+          echo $(date) > .trigger-release
+          # Commit and push changes
+          git add .trigger-release
+          git config --local user.email "com.git@sealsystems.de"
+          git config --local user.name "${GITHUB_ACTOR}"
+          git commit -m "chore: Use Node.js ${NEW_NODE_VERSION}"
+          git push

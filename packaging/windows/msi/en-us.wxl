@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WixLocalization Culture="en-us" xmlns="http://schemas.microsoft.com/wix/2006/localization">
+  <String Id="LogDirDlgTitle">{\WixUI_Font_Title}Log Folder</String>
+  <String Id="LogDirDlgDescription">Click Next to use the default folder or click Change to choose another.</String>
+  <String Id="LogDirDlgFolderLabel">Log to:</String>
+  <String Id="InvalidLogDirDlgText">Log directory must be on a local hard drive.</String>
+</WixLocalization>

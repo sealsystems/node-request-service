@@ -3,17 +3,26 @@ name: release
 on:
   push:
     branches:
-      - master
+      - "master"
       - "[0-9]+.[0-9]+.x"
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
 
 env:
+  BUILD_NUMBER: ${{ github.run_number }}
+  COMMIT_SHA: ${{ github.sha }}
+  ENVCONSUL_VERSION: 0.9.3
+  NODE_VERSION: 16.18.1
+  NSSM_VERSION: 2.24.5
+  SEVENZIP_VERSION: "19.00"
   LOG_LEVELS: fatal
   TLS_UNPROTECTED: world
 
 jobs:
   Test-Linux:
-    # Ignore release commits and automatic updates of build config
+    # Only on branch, ignore release commits and automatic updates of build config
     if: >
+      startsWith(github.ref, 'refs/heads/') &&
       !startsWith(github.event.head_commit.message, 'Release') &&
       github.event.head_commit.message != 'Update build configuration'
 
@@ -64,12 +73,18 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
 
   Test-Windows:
-    # Ignore release commits and automatic updates of build config
+    # Only on branch, ignore release commits and automatic updates of build config
     if: >
+      startsWith(github.ref, 'refs/heads/') &&
       !startsWith(github.event.head_commit.message, 'Release') &&
       github.event.head_commit.message != 'Update build configuration'
 
     runs-on: windows-2019
+
+    defaults:
+      run:
+        # Set Shell to default Powershell, not pwsh
+        shell: powershell -Command "& '{0}'"
 
     steps:
       - name: Set git to use LF
@@ -141,12 +156,15 @@ jobs:
           Write-Host "Writing Consul configuration..."
           @{
             bind_addr="127.0.0.1"
-            data_dir="C:\consul\data"
             bootstrap_expect=1
+            data_dir="C:\consul\data"
             ports=@{
+              http=-1
               dns=53
-              http=8500
+              https=8500
             }
+            cert_file="$($env:GITHUB_WORKSPACE)\tls\cert.pem"
+            key_file="$($env:GITHUB_WORKSPACE)\tls\key.pem"
             server=$True
           } | ConvertTo-Json | Out-File -Filepath "C:\consul\config.json" -Encoding ascii
 
@@ -167,8 +185,9 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
 
   Release:
-    # Ignore release commits and automatic updates of build config
+    # Only on branch, ignore release commits and automatic updates of build config
     if: >
+      startsWith(github.ref, 'refs/heads/') &&
       !startsWith(github.event.head_commit.message, 'Release') &&
       github.event.head_commit.message != 'Update build configuration'
 
@@ -201,28 +220,23 @@ jobs:
           registry-url: https://npm.pkg.github.com/
           scope: "@sealsystems"
 
-      - name: Cache Node.js modules
-        uses: actions/cache@v3
-        env:
-          cache-name: cache-node-modules
-        with:
-          # npm cache files are stored in `~/.npm` on Linux/macOS
-          path: ~/.npm
-          key: ${{ runner.os }}-${{ env.cache-name }}-16.18.1-${{ hashFiles('**/package-lock.json') }}
-
       - name: Install dependencies
         run: npm ci
         env:
           # Use personal access token, must be set for *each step*
           NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
 
-      - name: "Bugfix release: Set distribution tag accordingly to not remove 'latest' tag from the current version"
-        # Only on bugfix branches
-        if: github.ref != 'refs/heads/master'
-        run: |
-          echo "Patching package.json ..."
-          jq '. * { publishConfig: { tag: "bugfix" }}' < package.json > package.json.new
-          mv package.json.new package.json
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v23
+
+          #      - name: Extend knowledgebase if errors.js was modified
+          #        if: contains(steps.changed-files.outputs.modified_files, 'lib/errors.js')
+          #        run: |
+          #          echo "Your errors.js has been modified."
+          #          node ./.github/scripts/extend-knowledgebase.js
+          #        env:
+          #          KB_AUTH: ${{ secrets.KB_CREDENTIALS }}
 
       - name: Trigger release
         run: |
@@ -231,6 +245,213 @@ jobs:
         env:
           # Use personal access token, must be set for *each step*
           NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
+
+  Deploy-Linux:
+    # Only on release tag
+    if: startsWith(github.ref, 'refs/tags/')
+
+    strategy:
+      matrix:
+        PACKAGE_TYPE:
+          - rpm
+          - docker
+
+    runs-on: ubuntu-22.04
+
+    env:
+      PACKAGE_TYPE: ${{ matrix.PACKAGE_TYPE }}
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Use Node.js 16.18.1
+        uses: actions/setup-node@v3
+        with:
+          node-version: 16.18.1
+          registry-url: https://npm.pkg.github.com/
+          scope: "@sealsystems"
+
+      - name: Install Node.js dependencies
+        run: |
+          npm ci --production
+        working-directory: .github/scripts
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
+
+      - name: Activate custom packaging files
+        run: find packaging/linux -name '*.custom' -exec bash -c 'f="$1" && mv -f "$1" "${f%.custom}"' _ {} \;
+
+      - name: Install package dependencies
+        run: packaging/linux/${PACKAGE_TYPE}/install.sh
+        env:
+          DELIVERY_CREDENTIALS: ${{ secrets.DELIVERY_CREDENTIALS2 }}
+          GITHUB_TOKEN: ${{ secrets.CI_TOKEN }}
+
+      - name: Build
+        run: packaging/linux/${PACKAGE_TYPE}/build.sh
+        env:
+          CI_TOKEN: ${{ secrets.CI_TOKEN }}
+          DELIVERY_CREDENTIALS: ${{ secrets.DELIVERY_CREDENTIALS2 }}
+          NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
+
+      - name: Test
+        run: packaging/linux/${PACKAGE_TYPE}/test.sh
+
+      - name: Deploy
+        run: packaging/linux/${PACKAGE_TYPE}/deploy.sh
+        env:
+          CI_TOKEN: ${{ secrets.CI_TOKEN }}
+          DELIVERY_CREDENTIALS: ${{ secrets.DELIVERY_CREDENTIALS2 }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  Deploy-Windows:
+    # Only on release tag
+    if: startsWith(github.ref, 'refs/tags/')
+
+    strategy:
+      matrix:
+        PACKAGE_TYPE:
+          - msi
+          # - docker
+
+    runs-on: windows-2019
+
+    defaults:
+      run:
+        # Set Shell to default Powershell, not pwsh
+        shell: powershell -Command "& '{0}'"
+
+    env:
+      PACKAGE_TYPE: ${{ matrix.PACKAGE_TYPE }}
+
+    steps:
+      - name: Set git to use LF
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+
+      - uses: actions/checkout@v3
+
+      - name: Use Node.js 16.18.1
+        uses: actions/setup-node@v3
+        with:
+          node-version: 16.18.1
+          registry-url: https://npm.pkg.github.com/
+          scope: "@sealsystems"
+
+      - name: Install MongoDB 4.4.4
+        run: |
+          Write-Host "Stopping existing MongoDB service..."
+          Stop-Service mongodb -force
+
+          Write-Host "Downloading https://fastdl.mongodb.org/windows/mongodb-windows-x86_64-4.4.4.zip ..."
+          (New-Object Net.WebClient).DownloadFile(
+            "https://fastdl.mongodb.org/windows/mongodb-windows-x86_64-4.4.4.zip",
+            "C:\mongodb-windows-x86_64-4.4.4.zip"
+          )
+
+          Write-Host "Extracting zip archive to C:\mongodb ..."
+          Expand-Archive "C:\mongodb-windows-x86_64-4.4.4.zip" -DestinationPath "C:\"
+          Rename-Item "C:\mongodb-win32-x86_64-windows-4.4.4" "C:\mongodb"
+
+          Write-Host "Creating necessary folders in C:\mongodb ..."
+          mkdir c:\mongodb\data\db | Out-Null
+          mkdir c:\mongodb\log | Out-Null
+
+          Write-Host "Writing MongoDB configuration..."
+          "systemLog:
+            destination: file
+            path: c:\mongodb\log\mongod.log
+          storage:
+            dbPath: c:\mongodb\data\db
+          replication:
+            replSetName: rs0
+          net:
+            tls:
+              mode: requireTLS
+              certificateKeyFile: $($env:GITHUB_WORKSPACE)\tls\cert-key-combined.pem
+          " | Out-File C:\mongodb\mongod.cfg -Encoding utf8
+
+          Write-Host "Creating seal-mongodb service..."
+          cmd /c start /wait sc create seal-mongodb binPath= "C:\mongodb\bin\mongod.exe --service --config=C:\mongodb\mongod.cfg" DisplayName= "seal-mongodb" start= "demand"
+
+          Write-Host "Starting seal-mongodb service..."
+          Start-Service seal-mongodb
+
+          Write-Host "Initiate MonogDB replicaSet..."
+          C:\mongodb\bin\mongo.exe --tls --tlsAllowInvalidCertificates --eval 'rs.initiate()'
+
+      - name: Install Consul 1.7.4
+        run: |
+          Write-Host "Creating necessary folders in C:\consul ..."
+          mkdir c:\consul\data | Out-Null
+
+          Write-Host "Downloading https://releases.hashicorp.com/consul/1.7.4/consul_1.7.4_windows_amd64.zip ..."
+          (New-Object Net.WebClient).DownloadFile(
+            "https://releases.hashicorp.com/consul/1.7.4/consul_1.7.4_windows_amd64.zip",
+            "C:\consul\consul_1.7.4_windows_amd64.zip"
+          )
+
+          Write-Host "Extracting zip archive to C:\consul ..."
+          Expand-Archive "C:\consul\consul_1.7.4_windows_amd64.zip" -DestinationPath "C:\consul"
+
+          Write-Host "Writing Consul configuration..."
+          @{
+            bind_addr="127.0.0.1"
+            bootstrap_expect=1
+            ports=@{
+              http=-1
+              dns=53
+              https=8500
+            }
+            cert_file="$($env:GITHUB_WORKSPACE)\tls\cert.pem"
+            key_file="$($env:GITHUB_WORKSPACE)\tls\key.pem"
+            server=$True
+          } | ConvertTo-Json | Out-File -Filepath "C:\consul\config.json" -Encoding ascii
+
+      - name: Install Node.js dependencies for scripts
+        run: |
+          npm ci --production
+        working-directory: .github/scripts
+        env:
+          # Use personal access token, must be set for *each step*
+          NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
+
+      - name: Install Node.js dependencies for product
+        run: |
+          npm ci --production
+        env:
+          # Use personal access token, must be set for *each step*
+          NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
+
+      - name: Activate custom packaging files
+        # See: https://stackoverflow.com/a/21614001
+        run: Get-ChildItem -Path packaging\windows -Recurse -Include *.custom | Move-Item -Force -Destination { $_.FullName.replace(".custom","") }
+
+      - name: Install package dependencies
+        run: packaging\windows\${{ matrix.PACKAGE_TYPE }}\install.ps1
+        env:
+          DELIVERY_CREDENTIALS: ${{ secrets.DELIVERY_CREDENTIALS2 }}
+          GITHUB_TOKEN: ${{ secrets.CI_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
+
+      - name: Build
+        run: packaging\windows\${{ matrix.PACKAGE_TYPE }}\build.ps1
+        env:
+          DELIVERY_CREDENTIALS: ${{ secrets.DELIVERY_CREDENTIALS2 }}
+          KeyFile: D:\SealIECert.pfx
+          NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
+          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+          SignTool: C:\Program Files (x86)\Microsoft SDKs\Windows\v7.1A\Bin\signtool.exe
+
+      # Disable test since it does not work anyway and takes a long time to finish
+      # - name: Test
+      #   run: packaging\windows\${{ matrix.PACKAGE_TYPE }}\test.ps1
+
+      - name: Deploy
+        run: packaging\windows\${{ matrix.PACKAGE_TYPE }}\deploy.ps1
+        env:
+          DELIVERY_CREDENTIALS: ${{ secrets.DELIVERY_CREDENTIALS2 }}
 
       # # Debug with RDP
       # - name: Install Ngrok
