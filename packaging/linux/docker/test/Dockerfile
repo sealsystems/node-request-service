@@ -1,4 +1,4 @@
-FROM ghcr.io/sealsystems/<%= name %>:linux-amd64-<%= version %>
+FROM ghcr.io/sealsystems/<%= name %>:<%= version %>
 
 ENV NODE_ENV production
 
