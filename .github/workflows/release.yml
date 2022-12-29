@@ -12,7 +12,7 @@ env:
   BUILD_NUMBER: ${{ github.run_number }}
   COMMIT_SHA: ${{ github.sha }}
   ENVCONSUL_VERSION: 0.9.3
-  NODE_VERSION: 16.18.1
+  NODE_VERSION: 16.19.0
   NSSM_VERSION: 2.24.5
   SEVENZIP_VERSION: "19.00"
   LOG_LEVELS: fatal
@@ -44,10 +44,10 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Use Node.js 16.18.1
+      - name: Use Node.js 16.19.0
         uses: actions/setup-node@v3
         with:
-          node-version: 16.18.1
+          node-version: 16.19.0
           registry-url: https://npm.pkg.github.com/
           scope: "@sealsystems"
 
@@ -58,7 +58,7 @@ jobs:
         with:
           # npm cache files are stored in `~/.npm` on Linux/macOS
           path: ~/.npm
-          key: ${{ runner.os }}-${{ env.cache-name }}-16.18.1-${{ hashFiles('**/package-lock.json') }}
+          key: ${{ runner.os }}-${{ env.cache-name }}-16.19.0-${{ hashFiles('**/package-lock.json') }}
 
       - name: Install dependencies
         run: npm ci
@@ -94,10 +94,10 @@ jobs:
 
       - uses: actions/checkout@v3
 
-      - name: Use Node.js 16.18.1
+      - name: Use Node.js 16.19.0
         uses: actions/setup-node@v3
         with:
-          node-version: 16.18.1
+          node-version: 16.19.0
           registry-url: https://npm.pkg.github.com/
           scope: "@sealsystems"
 
@@ -213,10 +213,10 @@ jobs:
           # Use personal access token for cloning (and later pushing) code
           token: ${{ secrets.CI_TOKEN }}
 
-      - name: Use Node.js 16.18.1
+      - name: Use Node.js 16.19.0
         uses: actions/setup-node@v3
         with:
-          node-version: 16.18.1
+          node-version: 16.19.0
           registry-url: https://npm.pkg.github.com/
           scope: "@sealsystems"
 
@@ -228,7 +228,7 @@ jobs:
 
       - name: Get changed files
         id: changed-files
-        uses: tj-actions/changed-files@v23
+        uses: tj-actions/changed-files@v35
 
           #      - name: Extend knowledgebase if errors.js was modified
           #        if: contains(steps.changed-files.outputs.modified_files, 'lib/errors.js')
@@ -246,30 +246,139 @@ jobs:
           # Use personal access token, must be set for *each step*
           NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
 
-  Deploy-Linux:
+  Deploy-Linux-Container:
     # Only on release tag
     if: startsWith(github.ref, 'refs/tags/')
-
-    strategy:
-      matrix:
-        PACKAGE_TYPE:
-          - rpm
-          - docker
-
     runs-on: ubuntu-22.04
-
     env:
-      PACKAGE_TYPE: ${{ matrix.PACKAGE_TYPE }}
+      PACKAGE_TYPE: docker
 
     steps:
       - uses: actions/checkout@v3
 
-      - name: Use Node.js 16.18.1
+      - name: Use Node.js 16.19.0
         uses: actions/setup-node@v3
         with:
-          node-version: 16.18.1
+          node-version: 16.19.0
           registry-url: https://npm.pkg.github.com/
           scope: "@sealsystems"
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.0"
+
+      - name: Install
+        run: packaging/linux/${PACKAGE_TYPE}/install.sh
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@v2
+        with:
+          platforms: linux/amd64,linux/arm64,linux/s390x
+
+      - name: Login to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: comgit
+          password: ${{ secrets.CI_TOKEN }}
+
+      - name: Calculate labels
+        run: |
+          set -x
+
+          NAME="$(jq -r .name < package.json)"
+          VERSION="$(jq -r .version < package.json)"
+
+          echo "label_authors=$(jq -r .author.name < package.json)" >> $GITHUB_ENV
+          echo "label_created=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> $GITHUB_ENV
+          echo "label_description=$(jq -r .description < package.json)" >> $GITHUB_ENV
+          echo "label_documentation=https://sos.sealsystems.de" >> $GITHUB_ENV
+          echo "label_licenses=$(jq -r .license < package.json)" >> $GITHUB_ENV
+          echo "label_ref_name=${GITHUB_REPOSITORY}:${VERSION}.${BUILD_NUMBER}" >> $GITHUB_ENV
+          echo "label_revision=${COMMIT_SHA}" >> $GITHUB_ENV
+          echo "label_source=$(jq -r .repository.url < package.json)" >> $GITHUB_ENV
+          echo "label_title=${NAME}" >> $GITHUB_ENV
+          echo "label_url=https://ghcr.io/${GITHUB_REPOSITORY}" >> $GITHUB_ENV
+          echo "label_vendor=$(jq -r .author.name < package.json)" >> $GITHUB_ENV
+          echo "label_version=${VERSION}.${BUILD_NUMBER}" >> $GITHUB_ENV
+
+      - name: Calculate platforms
+        run: |
+          set -x
+
+          PLATFORMS="$(jq -r .seal.packaging.container.platform < package.json)"
+          if [ "$PLATFORMS" = "null"  ]; then
+            echo "No platforms defined in package.json. Defaulting to linux/amd64"
+            PLATFORMS="linux/amd64"
+          fi
+          echo "platforms=$PLATFORMS" >> $GITHUB_ENV
+
+      - name: Set container image metadata
+        id: container-image-metadata # you'll use this in the next step
+        uses: docker/metadata-action@v4
+        with:
+          # list of Docker images to use as base name for tags
+          images: ghcr.io/${{ github.repository }}
+          # Docker tags, use version with build number for version output
+          tags: |
+            type=raw,priority=999,value={{tag}}.${{env.BUILD_NUMBER}}
+            type=raw,priority=100,value={{tag}}
+          labels: |
+            org.opencontainers.image.authors=${{ env.label_authors }}
+            org.opencontainers.image.created=${{ env.label_created }}
+            org.opencontainers.image.description=${{ env.label_description }}
+            org.opencontainers.image.documentation=${{ env.label_documentation }}
+            org.opencontainers.image.licenses=${{ env.label_licenses }}
+            org.opencontainers.image.ref.name=${{ env.label_ref_name }}
+            org.opencontainers.image.revision=${{ env.label_revision }}
+            org.opencontainers.image.source=${{ env.label_source }}
+            org.opencontainers.image.title=${{ env.label_title }}
+            org.opencontainers.image.url=${{ env.label_url }}
+            org.opencontainers.image.vendor=${{ env.label_vendor }}
+            org.opencontainers.image.version=${{ env.label_version }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v3
+        with:
+          context:
+            .
+            #platforms: linux/amd64,linux/arm64,linux/s390x
+          platforms: ${{ env.platforms  }}
+          tags: ${{ steps.container-image-metadata.outputs.tags }}
+          labels: ${{ steps.container-image-metadata.outputs.labels }}
+          push: true
+          build-args: |
+            NODE_AUTH_TOKEN=${{ secrets.CI_TOKEN }}
+            DELIVERY_CREDENTIALS=${{ secrets.DELIVERY_CREDENTIALS2 }}
+
+      - name: Test
+        run: packaging/linux/${PACKAGE_TYPE}/test.sh
+
+  Deploy-Linux-Rpm:
+    # Only on release tag
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-22.04
+    env:
+      PACKAGE_TYPE: rpm
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Use Node.js 16.19.0
+        uses: actions/setup-node@v3
+        with:
+          node-version: 16.19.0
+          registry-url: https://npm.pkg.github.com/
+          scope: "@sealsystems"
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.0"
 
       - name: Install Node.js dependencies
         run: |
@@ -304,25 +413,16 @@ jobs:
           DELIVERY_CREDENTIALS: ${{ secrets.DELIVERY_CREDENTIALS2 }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  Deploy-Windows:
+  Deploy-Windows-Msi:
     # Only on release tag
     if: startsWith(github.ref, 'refs/tags/')
-
-    strategy:
-      matrix:
-        PACKAGE_TYPE:
-          - msi
-          # - docker
-
     runs-on: windows-2019
-
     defaults:
       run:
         # Set Shell to default Powershell, not pwsh
         shell: powershell -Command "& '{0}'"
-
     env:
-      PACKAGE_TYPE: ${{ matrix.PACKAGE_TYPE }}
+      PACKAGE_TYPE: msi
 
     steps:
       - name: Set git to use LF
@@ -332,10 +432,10 @@ jobs:
 
       - uses: actions/checkout@v3
 
-      - name: Use Node.js 16.18.1
+      - name: Use Node.js 16.19.0
         uses: actions/setup-node@v3
         with:
-          node-version: 16.18.1
+          node-version: 16.19.0
           registry-url: https://npm.pkg.github.com/
           scope: "@sealsystems"
 
@@ -429,14 +529,14 @@ jobs:
         run: Get-ChildItem -Path packaging\windows -Recurse -Include *.custom | Move-Item -Force -Destination { $_.FullName.replace(".custom","") }
 
       - name: Install package dependencies
-        run: packaging\windows\${{ matrix.PACKAGE_TYPE }}\install.ps1
+        run: packaging\windows\${{ env.PACKAGE_TYPE }}\install.ps1
         env:
           DELIVERY_CREDENTIALS: ${{ secrets.DELIVERY_CREDENTIALS2 }}
           GITHUB_TOKEN: ${{ secrets.CI_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
 
       - name: Build
-        run: packaging\windows\${{ matrix.PACKAGE_TYPE }}\build.ps1
+        run: packaging\windows\${{ env.PACKAGE_TYPE }}\build.ps1
         env:
           DELIVERY_CREDENTIALS: ${{ secrets.DELIVERY_CREDENTIALS2 }}
           KeyFile: D:\SealIECert.pfx
@@ -446,10 +546,10 @@ jobs:
 
       # Disable test since it does not work anyway and takes a long time to finish
       # - name: Test
-      #   run: packaging\windows\${{ matrix.PACKAGE_TYPE }}\test.ps1
+      #   run: packaging\windows\${{ env.PACKAGE_TYPE }}\test.ps1
 
       - name: Deploy
-        run: packaging\windows\${{ matrix.PACKAGE_TYPE }}\deploy.ps1
+        run: packaging\windows\${{ env.PACKAGE_TYPE }}\deploy.ps1
         env:
           DELIVERY_CREDENTIALS: ${{ secrets.DELIVERY_CREDENTIALS2 }}
 
@@ -479,3 +579,42 @@ jobs:
       #     Write-Host "---------------------------------------"
       # - name: Create Ngrok Tunnel
       #   run: .\ngrok\ngrok.exe tcp 3389
+
+  Purge-Delivery-on-Failure:
+    needs:
+      - Deploy-Linux-Container
+      - Deploy-Linux-Rpm
+      - Deploy-Windows-Msi
+    if: ${{ failure() }}
+    runs-on: ubuntu-22.04
+    env:
+      PACKAGE_TYPE: rpm
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Use Node.js 16.19.0
+        uses: actions/setup-node@v3
+        with:
+          node-version: 16.19.0
+          registry-url: https://npm.pkg.github.com/
+          scope: "@sealsystems"
+
+      - name: Install Node.js dependencies
+        run: |
+          npm ci --omit=dev
+        working-directory: .github/scripts
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
+
+      - name: Purge delivery
+        run: |
+          set -x
+
+          NAME=$(jq -r .name < package.json)
+          VERSION=$(jq -r .version < package.json)
+          if node .github/scripts/webdav.js exists "/SEAL Development/workspace/${NAME}/${VERSION}"; then
+            node .github/scripts/webdav.js rm "/SEAL Development/workspace/${NAME}/${VERSION}"
+          fi
+        env:
+          DELIVERY_CREDENTIALS: ${{ secrets.DELIVERY_CREDENTIALS2 }}
