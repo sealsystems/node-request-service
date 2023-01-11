@@ -340,6 +340,7 @@ jobs:
           tags: |
             type=raw,priority=999,value={{tag}}.${{env.BUILD_NUMBER}}
             type=raw,priority=100,value={{tag}}
+            type=raw,priority=1,value=latest
           labels: |
             org.opencontainers.image.authors=${{ env.label_authors }}
             org.opencontainers.image.created=${{ env.label_created }}
