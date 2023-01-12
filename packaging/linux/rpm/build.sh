@@ -1,5 +1,7 @@
 #!/bin/bash -e
 
+set -x
+
 if [ ! -e package.json ]; then
   echo "Error: No package.json found!"
   exit 1
@@ -24,6 +26,7 @@ RESOURCE="${PWD}/packaging/linux/rpm/resource"
 
 echo "Set common fpm arguments"
 declare -a FPM_ARGS
+FPM_ARGS+=(--architecture $ARCHITECTURE)
 FPM_ARGS+=(-s dir)
 FPM_ARGS+=(-t ${PACKAGE_TYPE})
 FPM_ARGS+=(--force)
