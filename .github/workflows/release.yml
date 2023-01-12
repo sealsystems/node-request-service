@@ -372,12 +372,39 @@ jobs:
       - name: Test
         run: packaging/linux/${PACKAGE_TYPE}/test.sh
 
+  Get-Architectures:
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-22.04
+    outputs:
+      architectures: ${{ steps.generate-architecture-matrix.outputs.architectures }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Generate Matrix
+        id: generate-architecture-matrix
+        run: |
+          set -x
+
+          ARCHITECTURE="$(jq -r .seal.packaging.rpm.architecture < package.json)"
+          if [ "$ARCHITECTURE" = "null"  ]; then
+            echo "No architecture defined in package.json. Defaulting to x86_64"
+            ARCHITECTURE="x86_64"
+          fi
+          ARCHITECTURES=$(echo "\"$ARCHITECTURE\"" | jq -c 'split(",")')
+          echo "architectures=$ARCHITECTURES" >> $GITHUB_OUTPUT
+
   Deploy-Linux-Rpm:
+    needs:
+      - Get-Architectures
+    strategy:
+      matrix:
+        architecture: ${{ fromJSON(needs.Get-Architectures.outputs.architectures) }}
     # Only on release tag
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-22.04
     env:
       PACKAGE_TYPE: rpm
+      ARCHITECTURE: ${{ matrix.architecture }}
 
     steps:
       - uses: actions/checkout@v3
@@ -418,6 +445,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
 
       - name: Test
+        if: matrix.architecture == 'x86_64'
         run: packaging/linux/${PACKAGE_TYPE}/test.sh
 
       - name: Deploy
@@ -426,6 +454,7 @@ jobs:
           CI_TOKEN: ${{ secrets.CI_TOKEN }}
           DELIVERY_CREDENTIALS: ${{ secrets.DELIVERY_CREDENTIALS2 }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 
   Deploy-Windows-Msi:
     # Only on release tag
