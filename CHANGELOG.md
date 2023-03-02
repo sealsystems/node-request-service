@@ -1,3 +1,10 @@
+## 4.0.32 (2023-03-02)
+
+### Chores
+
+
+Use Node.js 16.19.1 ([bb4e0a6](https://github.com/sealsystems/node-request-service/commit/bb4e0a6))
+
 ## 4.0.31 (2022-12-29)
 
 ### Chores
