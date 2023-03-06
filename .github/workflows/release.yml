@@ -11,7 +11,7 @@ on:
 env:
   BUILD_NUMBER: ${{ github.run_number }}
   COMMIT_SHA: ${{ github.sha }}
-  ENVCONSUL_VERSION: 0.13.1
+  ENVCONSUL_VERSION: 0.12.1
   NODE_VERSION: 16.19.1
   NSSM_VERSION: 2.24.5
   SEVENZIP_VERSION: "19.00"

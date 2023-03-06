@@ -41,8 +41,6 @@ case $ARCHITECTURE in
     fi
 
     if [ -n "${ENVCONSUL_VERSION}" ]; then
-      # fixed version for now, change if BP is ready :)
-      ENVCONSUL_VERSION="0.13.1"
       echo "Copying /mnt/3rd-party/envconsul/${ENVCONSUL_VERSION}/linux/envconsul_${ENVCONSUL_VERSION}_linux_s390x.zip"
       node .github/scripts/webdav.js pull \
         "SEAL Development/3rd-party/envconsul/${ENVCONSUL_VERSION}/linux/envconsul_${ENVCONSUL_VERSION}_linux_s390x.zip" \
