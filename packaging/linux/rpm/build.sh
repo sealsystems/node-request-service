@@ -14,13 +14,14 @@ PREFIX=/opt/seal
 AUTHOR_NAME=$(jq -r .author.name < package.json)
 AUTHOR_EMAIL=$(jq -r .author.email < package.json)
 AUTHOR_URL=$(jq -r .author.url < package.json)
+DISABLE_ENVCONSUL=$(jq -r .seal.packaging.disableEnvconsul < package.json)
 LICENSE="SEAL End User License"
+NODE_DEPENDENCIES=$(jq -r '.dependencies' < package.json)
 PACKAGE_VERSION=$(jq -r .version < package.json)
 PACKAGE_NAME=$(jq -r .name < package.json)
 PACKAGE_DESCRIPTION=$(jq -r .description < package.json)
 SERVICE_NAME=$(jq -r .seal.service.name < package.json)
 SERVICE_TAGS=$(jq -r .seal.service.tags < package.json)
-NODE_DEPENDENCIES=$(jq -r '.dependencies' < package.json)
 
 RESOURCE="${PWD}/packaging/linux/rpm/resource"
 
@@ -118,6 +119,9 @@ echo "Copy start script"
 if [ -e "${RESOURCE}/start.sh.custom" ]; then
   echo "Using start.sh.custom"
   cp "${RESOURCE}/start.sh.custom" "${PACKAGE_NAME}/start.sh"
+elif [ "${DISABLE_ENVCONSUL}" = true ]; then
+  echo "Using start.sh without envconsul"
+  cp "${RESOURCE}/start_no_envconsul.sh" "${PACKAGE_NAME}/start.sh"
 else
   cp "${RESOURCE}/start.sh" "${PACKAGE_NAME}"
 fi

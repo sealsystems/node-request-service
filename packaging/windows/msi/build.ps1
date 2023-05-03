@@ -53,6 +53,7 @@ $env:UPGRADE_CODE = $packageJson.seal.packaging.msi.upgradeCode
 $env:AUTHOR_NAME = $packageJson.author.name
 $env:AUTHOR_URL = $packageJson.author.url
 $env:COMPANY_FOLDER = $packageJson.author.name -Replace " AG$",""
+$env:DISABLE_ENVCONSUL = $packageJson.seal.packaging.disableEnvconsul
 
 # Find name of bin/*.js file to start the Node.js application
 $env:MAIN_JS_FILE = (get-childitem -path bin -filter *.js).name
@@ -60,6 +61,12 @@ $env:MAIN_JS_FILE = (get-childitem -path bin -filter *.js).name
 # Add empty SERVICE_TAGS variable, if nothing defined in package.json
 if (! ($env:SERVICE_TAGS)) {
   $env:SERVICE_TAGS = " "
+}
+
+if ($env:DISABLE_ENVCONSUL) {
+  # overwrite run.bat with run_no_envconsul.bat
+  Write-Host "Disabling envconsul"
+  cp "packaging\windows\msi\resource\run_no_envconsul.bat" "packaging\windows\msi\resource\run.bat"
 }
 
 # Code sign the envconsul.exe file
