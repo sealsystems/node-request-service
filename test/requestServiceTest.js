@@ -1,14 +1,43 @@
 'use strict';
 
+const { Readable, Writable } = require('stream');
+
 const assert = require('assertthat');
 const { nodeenv } = require('nodeenv');
 const proxyquire = require('proxyquire');
+
+class Client extends Writable {
+  constructor(resStream) {
+    super();
+    this.resStream = resStream;
+    this.chunksReceived = [];
+    this._write = (chunk, encoding, callback) => {
+      this.chunksReceived.push(chunk);
+      callback(null);
+    };
+    this._final = (callback) => {
+      this.emit('response', this.resStream);
+      callback();
+    };
+  }
+}
+class Response extends Readable {
+  constructor() {
+    super();
+    this.readData = ['{"bar":"foo"}', null];
+    this._read = () => {
+      this.push(this.readData.shift());
+    };
+  }
+}
 
 let connectError;
 let connectedServices;
 let resolveError;
 let resolvedServices;
 let path;
+let reqStream;
+let resStream;
 
 const requestService = proxyquire('../lib/requestService', {
   async '@sealsystems/connect-service'(options, host) {
@@ -20,8 +49,9 @@ const requestService = proxyquire('../lib/requestService', {
     }
 
     connectedServices.push(host);
-
-    return `This is a client.`;
+    resStream = new Response();
+    reqStream = new Client(resStream);
+    return reqStream;
   },
   async './resolve'() {
     if (resolveError) {
@@ -39,6 +69,8 @@ suite('requestService', () => {
     resolveError = null;
     resolvedServices = [];
     path = null;
+    reqStream = null;
+    resStream = null;
   });
 
   test('is a function', async () => {
@@ -122,8 +154,25 @@ suite('requestService', () => {
 
     assert.that(connectedServices.length).is.equalTo(1);
     assert.that(connectedServices[0]).is.equalTo(resolvedServices[0]);
-    assert.that(client).is.equalTo('This is a client.');
+    assert.that(client).is.ofType('object');
     assert.that(path).is.equalTo('/test/path');
+  });
+
+  test('returns json response', async () => {
+    resolvedServices = ['service1', 'service2'];
+
+    const response = await requestService({
+      consul: {},
+      service: 'test service',
+      path: '/test/path',
+      json: {
+        foo: 'bar'
+      },
+      responseType: 'json'
+    });
+
+    assert.that(response).is.equalTo({ bar: 'foo' });
+    assert.that(reqStream.chunksReceived.join('')).is.equalTo('{"foo":"bar"}');
   });
 
   suite('cloud service discovery', () => {
@@ -138,7 +187,7 @@ suite('requestService', () => {
 
       assert.that(connectedServices.length).is.equalTo(1);
       assert.that(connectedServices[0]).is.equalTo({ name: service, port: 3000 });
-      assert.that(client).is.equalTo('This is a client.');
+      assert.that(client).is.ofType('object');
       restore();
     });
   });
@@ -154,7 +203,7 @@ suite('requestService', () => {
 
     assert.that(connectedServices.length).is.equalTo(1);
     assert.that(connectedServices[0]).is.equalTo(resolvedServices[0]);
-    assert.that(client).is.equalTo('This is a client.');
+    assert.that(client).is.ofType('object');
 
     assert
       .that(path)
