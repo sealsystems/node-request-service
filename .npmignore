@@ -1,0 +1,12 @@
+*
+!/bin/**
+!/lib/**
+
+# Yeoman generators
+!/generators/**
+
+# @sealsystems/semantic-release
+!/changelog-template.js
+!/generic.js
+!/node-binary.js
+!/node-module.js
