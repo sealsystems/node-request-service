@@ -1,3 +1,10 @@
+## 4.1.1 (2023-05-17)
+
+### Chores
+
+
+Moved build config back to oss module ([727a5f7](https://github.com/sealsystems/node-request-service/commit/727a5f7))
+
 ## 4.1.0 (2023-05-17)
 
 ### Features
