@@ -1,3 +1,10 @@
+## 4.1.0 (2023-05-17)
+
+### Features
+
+
+Added option for reading JSON response ([4a37b81](https://github.com/sealsystems/node-request-service/commit/4a37b81))
+
 ## 4.0.32 (2023-03-02)
 
 ### Chores
