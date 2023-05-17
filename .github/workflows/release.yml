@@ -3,26 +3,17 @@ name: release
 on:
   push:
     branches:
-      - "master"
+      - master
       - "[0-9]+.[0-9]+.x"
-    tags:
-      - "[0-9]+.[0-9]+.[0-9]+"
 
 env:
-  BUILD_NUMBER: ${{ github.run_number }}
-  COMMIT_SHA: ${{ github.sha }}
-  ENVCONSUL_VERSION: 0.12.1
-  NODE_VERSION: 16.19.1
-  NSSM_VERSION: 2.24.5
-  SEVENZIP_VERSION: "19.00"
   LOG_LEVELS: fatal
   TLS_UNPROTECTED: world
 
 jobs:
   Test-Linux:
-    # Only on branch, ignore release commits and automatic updates of build config
+    # Ignore release commits and automatic updates of build config
     if: >
-      startsWith(github.ref, 'refs/heads/') &&
       !startsWith(github.event.head_commit.message, 'Release') &&
       github.event.head_commit.message != 'Update build configuration'
 
@@ -73,18 +64,12 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
 
   Test-Windows:
-    # Only on branch, ignore release commits and automatic updates of build config
+    # Ignore release commits and automatic updates of build config
     if: >
-      startsWith(github.ref, 'refs/heads/') &&
       !startsWith(github.event.head_commit.message, 'Release') &&
       github.event.head_commit.message != 'Update build configuration'
 
     runs-on: windows-2019
-
-    defaults:
-      run:
-        # Set Shell to default Powershell, not pwsh
-        shell: powershell -Command "& '{0}'"
 
     steps:
       - name: Set git to use LF
@@ -156,15 +141,12 @@ jobs:
           Write-Host "Writing Consul configuration..."
           @{
             bind_addr="127.0.0.1"
-            bootstrap_expect=1
             data_dir="C:\consul\data"
+            bootstrap_expect=1
             ports=@{
-              http=-1
               dns=53
-              https=8500
+              http=8500
             }
-            cert_file="$($env:GITHUB_WORKSPACE)\tls\cert.pem"
-            key_file="$($env:GITHUB_WORKSPACE)\tls\key.pem"
             server=$True
           } | ConvertTo-Json | Out-File -Filepath "C:\consul\config.json" -Encoding ascii
 
@@ -185,9 +167,8 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
 
   Release:
-    # Only on branch, ignore release commits and automatic updates of build config
+    # Ignore release commits and automatic updates of build config
     if: >
-      startsWith(github.ref, 'refs/heads/') &&
       !startsWith(github.event.head_commit.message, 'Release') &&
       github.event.head_commit.message != 'Update build configuration'
 
@@ -220,23 +201,28 @@ jobs:
           registry-url: https://npm.pkg.github.com/
           scope: "@sealsystems"
 
+      - name: Cache Node.js modules
+        uses: actions/cache@v3
+        env:
+          cache-name: cache-node-modules
+        with:
+          # npm cache files are stored in `~/.npm` on Linux/macOS
+          path: ~/.npm
+          key: ${{ runner.os }}-${{ env.cache-name }}-16.19.1-${{ hashFiles('**/package-lock.json') }}
+
       - name: Install dependencies
         run: npm ci
         env:
           # Use personal access token, must be set for *each step*
           NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
 
-      - name: Get changed files
-        id: changed-files
-        uses: tj-actions/changed-files@v35
-
-          #      - name: Extend knowledgebase if errors.js was modified
-          #        if: contains(steps.changed-files.outputs.modified_files, 'lib/errors.js')
-          #        run: |
-          #          echo "Your errors.js has been modified."
-          #          node ./.github/scripts/extend-knowledgebase.js
-          #        env:
-          #          KB_AUTH: ${{ secrets.KB_CREDENTIALS }}
+      - name: "Bugfix release: Set distribution tag accordingly to not remove 'latest' tag from the current version"
+        # Only on bugfix branches
+        if: github.ref != 'refs/heads/master'
+        run: |
+          echo "Patching package.json ..."
+          jq '. * { publishConfig: { tag: "bugfix" }}' < package.json > package.json.new
+          mv package.json.new package.json
 
       - name: Trigger release
         run: |
@@ -245,356 +231,6 @@ jobs:
         env:
           # Use personal access token, must be set for *each step*
           NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
-
-  Deploy-Linux-Container:
-    # Only on release tag
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-22.04
-    env:
-      PACKAGE_TYPE: docker
-
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Use Node.js 16.19.1
-        uses: actions/setup-node@v3
-        with:
-          node-version: 16.19.1
-          registry-url: https://npm.pkg.github.com/
-          scope: "@sealsystems"
-
-      - name: Use Ruby 3.0
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: "3.0"
-
-      - name: Install
-        run: packaging/linux/${PACKAGE_TYPE}/install.sh
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
-
-      # See: https://docs.docker.com/build/ci/github-actions/configure-builder/#ssh-authentication
-      - name: Set up SSH
-        uses: MrSquaare/ssh-setup-action@523473d91581ccbf89565e12b40faba93f2708bd # v1.1.0
-        with:
-          host: ec2-3-69-237-160.eu-central-1.compute.amazonaws.com
-          private-key: ${{ secrets.SSH_KEY_DOCKER_BUILDER_ARM64 }}
-          private-key-name: aws_docker_builder_arm64
-
-      - name: Set up Docker Buildx
-        id: buildx
-        uses: docker/setup-buildx-action@v2
-        with:
-          platforms: linux/amd64,linux/s390x
-          append: |
-            - endpoint: ssh://ec2-user@ec2-3-69-237-160.eu-central-1.compute.amazonaws.com
-              platforms: linux/arm64
-
-      - name: Login to GHCR
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v2
-        with:
-          registry: ghcr.io
-          username: comgit
-          password: ${{ secrets.CI_TOKEN }}
-
-      - name: Calculate labels
-        run: |
-          set -x
-
-          NAME="$(jq -r .name < package.json)"
-          VERSION="$(jq -r .version < package.json)"
-
-          echo "label_authors=$(jq -r .author.name < package.json)" >> $GITHUB_ENV
-          echo "label_created=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> $GITHUB_ENV
-          echo "label_description=$(jq -r .description < package.json)" >> $GITHUB_ENV
-          echo "label_documentation=https://sos.sealsystems.de" >> $GITHUB_ENV
-          echo "label_licenses=$(jq -r .license < package.json)" >> $GITHUB_ENV
-          echo "label_ref_name=${GITHUB_REPOSITORY}:${VERSION}.${BUILD_NUMBER}" >> $GITHUB_ENV
-          echo "label_revision=${COMMIT_SHA}" >> $GITHUB_ENV
-          echo "label_source=$(jq -r .repository.url < package.json)" >> $GITHUB_ENV
-          echo "label_title=${NAME}" >> $GITHUB_ENV
-          echo "label_url=https://ghcr.io/${GITHUB_REPOSITORY}" >> $GITHUB_ENV
-          echo "label_vendor=$(jq -r .author.name < package.json)" >> $GITHUB_ENV
-          echo "label_version=${VERSION}.${BUILD_NUMBER}" >> $GITHUB_ENV
-
-      - name: Calculate platforms
-        run: |
-          set -x
-
-          PLATFORMS="$(jq -r .seal.packaging.container.platform < package.json)"
-          if [ "$PLATFORMS" = "null"  ]; then
-            echo "No platforms defined in package.json. Defaulting to linux/amd64"
-            PLATFORMS="linux/amd64"
-          fi
-          echo "platforms=$PLATFORMS" >> $GITHUB_ENV
-
-      - name: Set container image metadata
-        id: container-image-metadata # you'll use this in the next step
-        uses: docker/metadata-action@v4
-        with:
-          # list of Docker images to use as base name for tags
-          images: ghcr.io/${{ github.repository }}
-          # Docker tags, use version with build number for version output
-          tags: |
-            type=raw,priority=999,value={{tag}}.${{env.BUILD_NUMBER}}
-            type=raw,priority=100,value={{tag}}
-            type=raw,priority=1,value=latest
-          labels: |
-            org.opencontainers.image.authors=${{ env.label_authors }}
-            org.opencontainers.image.created=${{ env.label_created }}
-            org.opencontainers.image.description=${{ env.label_description }}
-            org.opencontainers.image.documentation=${{ env.label_documentation }}
-            org.opencontainers.image.licenses=${{ env.label_licenses }}
-            org.opencontainers.image.ref.name=${{ env.label_ref_name }}
-            org.opencontainers.image.revision=${{ env.label_revision }}
-            org.opencontainers.image.source=${{ env.label_source }}
-            org.opencontainers.image.title=${{ env.label_title }}
-            org.opencontainers.image.url=${{ env.label_url }}
-            org.opencontainers.image.vendor=${{ env.label_vendor }}
-            org.opencontainers.image.version=${{ env.label_version }}
-
-      - name: Build and push
-        uses: docker/build-push-action@v3
-        with:
-          context:
-            .
-            #platforms: linux/amd64,linux/arm64,linux/s390x
-          platforms: ${{ env.platforms  }}
-          tags: ${{ steps.container-image-metadata.outputs.tags }}
-          labels: ${{ steps.container-image-metadata.outputs.labels }}
-          push: true
-          build-args: |
-            NODE_AUTH_TOKEN=${{ secrets.CI_TOKEN }}
-            DELIVERY_CREDENTIALS=${{ secrets.DELIVERY_CREDENTIALS2 }}
-
-      - name: Test
-        run: packaging/linux/${PACKAGE_TYPE}/test.sh
-
-  Get-Architectures:
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-22.04
-    outputs:
-      architectures: ${{ steps.generate-architecture-matrix.outputs.architectures }}
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Generate Matrix
-        id: generate-architecture-matrix
-        run: |
-          set -x
-
-          ARCHITECTURE="$(jq -r .seal.packaging.rpm.architecture < package.json)"
-          if [ "$ARCHITECTURE" = "null"  ]; then
-            echo "No architecture defined in package.json. Defaulting to x86_64"
-            ARCHITECTURE="x86_64"
-          fi
-          ARCHITECTURES=$(echo "\"$ARCHITECTURE\"" | jq -c 'split(",")')
-          echo "architectures=$ARCHITECTURES" >> $GITHUB_OUTPUT
-
-  Deploy-Linux-Rpm:
-    needs:
-      - Get-Architectures
-    strategy:
-      matrix:
-        architecture: ${{ fromJSON(needs.Get-Architectures.outputs.architectures) }}
-    # Only on release tag
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-22.04
-    env:
-      PACKAGE_TYPE: rpm
-      ARCHITECTURE: ${{ matrix.architecture }}
-
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Use Node.js 16.19.1
-        uses: actions/setup-node@v3
-        with:
-          node-version: 16.19.1
-          registry-url: https://npm.pkg.github.com/
-          scope: "@sealsystems"
-
-      - name: Use Ruby 3.0
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: "3.0"
-
-      - name: Install Node.js dependencies
-        run: |
-          npm ci --production
-        working-directory: .github/scripts
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
-
-      - name: Activate custom packaging files
-        run: find packaging/linux -name '*.custom' -exec bash -c 'f="$1" && mv -f "$1" "${f%.custom}"' _ {} \;
-
-      - name: Install package dependencies
-        run: packaging/linux/${PACKAGE_TYPE}/install.sh
-        env:
-          DELIVERY_CREDENTIALS: ${{ secrets.DELIVERY_CREDENTIALS2 }}
-          GITHUB_TOKEN: ${{ secrets.CI_TOKEN }}
-
-      - name: Build
-        run: packaging/linux/${PACKAGE_TYPE}/build.sh
-        env:
-          CI_TOKEN: ${{ secrets.CI_TOKEN }}
-          DELIVERY_CREDENTIALS: ${{ secrets.DELIVERY_CREDENTIALS2 }}
-          NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
-
-      - name: Test
-        if: matrix.architecture == 'x86_64'
-        run: packaging/linux/${PACKAGE_TYPE}/test.sh
-
-      - name: Deploy
-        run: packaging/linux/${PACKAGE_TYPE}/deploy.sh
-        env:
-          CI_TOKEN: ${{ secrets.CI_TOKEN }}
-          DELIVERY_CREDENTIALS: ${{ secrets.DELIVERY_CREDENTIALS2 }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-
-  Deploy-Windows-Msi:
-    # Only on release tag
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: windows-2019
-    defaults:
-      run:
-        # Set Shell to default Powershell, not pwsh
-        shell: powershell -Command "& '{0}'"
-    env:
-      PACKAGE_TYPE: msi
-
-    steps:
-      - name: Set git to use LF
-        run: |
-          git config --global core.autocrlf false
-          git config --global core.eol lf
-
-      - uses: actions/checkout@v3
-
-      - name: Use Node.js 16.19.1
-        uses: actions/setup-node@v3
-        with:
-          node-version: 16.19.1
-          registry-url: https://npm.pkg.github.com/
-          scope: "@sealsystems"
-
-      - name: Install MongoDB 4.4.4
-        run: |
-          Write-Host "Stopping existing MongoDB service..."
-          Stop-Service mongodb -force
-
-          Write-Host "Downloading https://fastdl.mongodb.org/windows/mongodb-windows-x86_64-4.4.4.zip ..."
-          (New-Object Net.WebClient).DownloadFile(
-            "https://fastdl.mongodb.org/windows/mongodb-windows-x86_64-4.4.4.zip",
-            "C:\mongodb-windows-x86_64-4.4.4.zip"
-          )
-
-          Write-Host "Extracting zip archive to C:\mongodb ..."
-          Expand-Archive "C:\mongodb-windows-x86_64-4.4.4.zip" -DestinationPath "C:\"
-          Rename-Item "C:\mongodb-win32-x86_64-windows-4.4.4" "C:\mongodb"
-
-          Write-Host "Creating necessary folders in C:\mongodb ..."
-          mkdir c:\mongodb\data\db | Out-Null
-          mkdir c:\mongodb\log | Out-Null
-
-          Write-Host "Writing MongoDB configuration..."
-          "systemLog:
-            destination: file
-            path: c:\mongodb\log\mongod.log
-          storage:
-            dbPath: c:\mongodb\data\db
-          replication:
-            replSetName: rs0
-          net:
-            tls:
-              mode: requireTLS
-              certificateKeyFile: $($env:GITHUB_WORKSPACE)\tls\cert-key-combined.pem
-          " | Out-File C:\mongodb\mongod.cfg -Encoding utf8
-
-          Write-Host "Creating seal-mongodb service..."
-          cmd /c start /wait sc create seal-mongodb binPath= "C:\mongodb\bin\mongod.exe --service --config=C:\mongodb\mongod.cfg" DisplayName= "seal-mongodb" start= "demand"
-
-          Write-Host "Starting seal-mongodb service..."
-          Start-Service seal-mongodb
-
-          Write-Host "Initiate MonogDB replicaSet..."
-          C:\mongodb\bin\mongo.exe --tls --tlsAllowInvalidCertificates --eval 'rs.initiate()'
-
-      - name: Install Consul 1.15.0
-        run: |
-          Write-Host "Creating necessary folders in C:\consul ..."
-          mkdir c:\consul\data | Out-Null
-
-          Write-Host "Downloading https://releases.hashicorp.com/consul/1.15.0/consul_1.15.0_windows_amd64.zip ..."
-          (New-Object Net.WebClient).DownloadFile(
-            "https://releases.hashicorp.com/consul/1.15.0/consul_1.15.0_windows_amd64.zip",
-            "C:\consul\consul_1.15.0_windows_amd64.zip"
-          )
-
-          Write-Host "Extracting zip archive to C:\consul ..."
-          Expand-Archive "C:\consul\consul_1.15.0_windows_amd64.zip" -DestinationPath "C:\consul"
-
-          Write-Host "Writing Consul configuration..."
-          @{
-            bind_addr="127.0.0.1"
-            bootstrap_expect=1
-            ports=@{
-              http=-1
-              dns=53
-              https=8500
-            }
-            cert_file="$($env:GITHUB_WORKSPACE)\tls\cert.pem"
-            key_file="$($env:GITHUB_WORKSPACE)\tls\key.pem"
-            server=$True
-          } | ConvertTo-Json | Out-File -Filepath "C:\consul\config.json" -Encoding ascii
-
-      - name: Install Node.js dependencies for scripts
-        run: |
-          npm ci --production
-        working-directory: .github/scripts
-        env:
-          # Use personal access token, must be set for *each step*
-          NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
-
-      - name: Install Node.js dependencies for product
-        run: |
-          npm ci --production
-        env:
-          # Use personal access token, must be set for *each step*
-          NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
-
-      - name: Activate custom packaging files
-        # See: https://stackoverflow.com/a/21614001
-        run: Get-ChildItem -Path packaging\windows -Recurse -Include *.custom | Move-Item -Force -Destination { $_.FullName.replace(".custom","") }
-
-      - name: Install package dependencies
-        run: packaging\windows\${{ env.PACKAGE_TYPE }}\install.ps1
-        env:
-          DELIVERY_CREDENTIALS: ${{ secrets.DELIVERY_CREDENTIALS2 }}
-          GITHUB_TOKEN: ${{ secrets.CI_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
-
-      - name: Build
-        run: packaging\windows\${{ env.PACKAGE_TYPE }}\build.ps1
-        env:
-          DELIVERY_CREDENTIALS: ${{ secrets.DELIVERY_CREDENTIALS2 }}
-          KeyFile: D:\SealIECert.pfx
-          NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
-          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
-          SignTool: C:\Program Files (x86)\Microsoft SDKs\Windows\v7.1A\Bin\signtool.exe
-
-      # Disable test since it does not work anyway and takes a long time to finish
-      # - name: Test
-      #   run: packaging\windows\${{ env.PACKAGE_TYPE }}\test.ps1
-
-      - name: Deploy
-        run: packaging\windows\${{ env.PACKAGE_TYPE }}\deploy.ps1
-        env:
-          DELIVERY_CREDENTIALS: ${{ secrets.DELIVERY_CREDENTIALS2 }}
 
       # # Debug with RDP
       # - name: Install Ngrok
@@ -622,42 +258,3 @@ jobs:
       #     Write-Host "---------------------------------------"
       # - name: Create Ngrok Tunnel
       #   run: .\ngrok\ngrok.exe tcp 3389
-
-  Purge-Delivery-on-Failure:
-    needs:
-      - Deploy-Linux-Container
-      - Deploy-Linux-Rpm
-      - Deploy-Windows-Msi
-    if: ${{ failure() }}
-    runs-on: ubuntu-22.04
-    env:
-      PACKAGE_TYPE: rpm
-
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Use Node.js 16.19.1
-        uses: actions/setup-node@v3
-        with:
-          node-version: 16.19.1
-          registry-url: https://npm.pkg.github.com/
-          scope: "@sealsystems"
-
-      - name: Install Node.js dependencies
-        run: |
-          npm ci --omit=dev
-        working-directory: .github/scripts
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.CI_TOKEN }}
-
-      - name: Purge delivery
-        run: |
-          set -x
-
-          NAME=$(jq -r .name < package.json)
-          VERSION=$(jq -r .version < package.json)
-          if node .github/scripts/webdav.js exists "/SEAL Development/workspace/${NAME}/${VERSION}"; then
-            node .github/scripts/webdav.js rm "/SEAL Development/workspace/${NAME}/${VERSION}"
-          fi
-        env:
-          DELIVERY_CREDENTIALS: ${{ secrets.DELIVERY_CREDENTIALS2 }}

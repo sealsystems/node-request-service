@@ -37,15 +37,15 @@ req.end();
 
 The first parameter is an `options` object that can contain the following properties:
 
-| property     | type            | description                                                                            |
-|--------------|-----------------|----------------------------------------------------------------------------------------|
-| consul       | required object | Consul client for service discovery                                                    |
-| service      | required string | Name of the service to access                                                          |
-| headers      | optional object | Additional HTTP/HTTPS headers                                                          |
-| method       | optional string | HTTP/HTTPS method, default `POST`                                                      |
-| path         | optional string | URL-path to access, default `/`                                                        |
-| responseType | optional string | Valid value: `json`, read JSON response and return as object                           |
-| json         | optional object | Only valid together with responseType. Send object given in `json` property to service |
+| property     | type            | description                                                                              |
+|--------------|-----------------|------------------------------------------------------------------------------------------|
+| consul       | required object | Consul client for service discovery                                                      |
+| service      | required string | Name of the service to access                                                            |
+| headers      | optional object | Additional HTTP/HTTPS headers                                                            |
+| method       | optional string | HTTP/HTTPS method, default `POST`                                                        |
+| path         | optional string | URL-path to access, default `/`                                                          |
+| responseType | optional string | Read JSON response and return it as object. Possible value: `json`                       |
+| json         | optional object | Only valid together with `responseType`. Send object given in `json` property to service |
 
 Here is an example of a more complete `options` object:
 
