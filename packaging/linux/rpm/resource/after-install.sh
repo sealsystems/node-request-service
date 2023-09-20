@@ -64,7 +64,8 @@ cp "${RPM_INSTALL_PREFIX}/<%= name %>/<%= name %>.service" "/usr/lib/systemd/sys
 
 # Add service to sudoers
 if [ -d "/etc/sudoers.d" ]; then
-  ln -fs "${RPM_INSTALL_PREFIX}/<%= name %>/sudoers" "/etc/sudoers.d/<%= name %>"
+  rm -f "/etc/sudoers.d/<%= name %>"
+  cp "${RPM_INSTALL_PREFIX}/<%= name %>/sudoers" "/etc/sudoers.d/<%= name %>"
 fi
 
 # Copy pre-installed tls certificate into config dir if it does not exist already
