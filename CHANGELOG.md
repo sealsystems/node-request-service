@@ -1,3 +1,10 @@
+## 4.1.2 (2023-09-20)
+
+### Chores
+
+
+cp sudoers file ([024ee26](https://github.com/sealsystems/node-request-service/commit/024ee26))
+
 ## 4.1.1 (2023-05-17)
 
 ### Chores
