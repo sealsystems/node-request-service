@@ -1,3 +1,12 @@
+## 4.1.3 (2023-11-21)
+
+### Chores
+
+
+update connect-service ([2dfb447](https://github.com/sealsystems/node-request-service/commit/2dfb447))
+
+https://sealsystems.atlassian.net/browse/PLS-1771
+
 ## 4.1.2 (2023-09-20)
 
 ### Chores
