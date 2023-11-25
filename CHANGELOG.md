@@ -1,3 +1,10 @@
+## 4.1.4 (2023-11-25)
+
+### Bug Fixes
+
+
+Update sealsystems dependencies (patch only) ([c444f5b](https://github.com/sealsystems/node-request-service/commit/c444f5b))
+
 ## 4.1.3 (2023-11-21)
 
 ### Chores
