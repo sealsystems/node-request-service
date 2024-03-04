@@ -1,3 +1,10 @@
+## 4.1.6 (2024-03-04)
+
+### Bug Fixes
+
+
+yo ([84d66bd](https://github.com/sealsystems/node-request-service/commit/84d66bd))
+
 ## 4.1.5 (2024-01-09)
 
 ### Bug Fixes
