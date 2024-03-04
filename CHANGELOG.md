@@ -1,3 +1,12 @@
+## 4.1.7 (2024-03-04)
+
+### Chores
+
+
+Update package.json ([4cb8848](https://github.com/sealsystems/node-request-service/commit/4cb8848))
+
+Use Node.js 20.11.0 ([312795c](https://github.com/sealsystems/node-request-service/commit/312795c))
+
 ## 4.1.6 (2024-03-04)
 
 ### Bug Fixes
