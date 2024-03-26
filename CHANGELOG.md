@@ -1,3 +1,10 @@
+## 4.2.0 (2024-03-26)
+
+### Features
+
+
+Update sealsystems dependencies (patch/minor only) ([dcfd775](https://github.com/sealsystems/node-request-service/commit/dcfd775))
+
 ## 4.1.7 (2024-03-04)
 
 ### Chores
