@@ -23,7 +23,7 @@
   "dependencies": {
     "@sealsystems/connect-service": "3.2.1",
     "@sealsystems/log": "2.4.3",
-    "@sealsystems/seal-getenv": "1.2.0",
+    "@sealsystems/seal-getenv": "1.3.0",
     "retry": "0.13.1"
   },
   "devDependencies": {
