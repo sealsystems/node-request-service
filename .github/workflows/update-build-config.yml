@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         # Use personal access token for cloning (and later pushing) code
         with:
           token: ${{ secrets.CI_TOKEN }}
@@ -26,14 +26,14 @@ jobs:
           git reset --hard ${GITHUB_REF#refs/heads/}
 
       - name: Use Node.js 20.11.1
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: 20.11.1
           registry-url: https://npm.pkg.github.com/
           scope: "@sealsystems"
 
       - name: Cache Node.js modules
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         env:
           cache-name: cache-node-modules
         with:
