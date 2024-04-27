@@ -11,6 +11,6 @@
   "dependencies": {
     "getenv": "1.0.0",
     "needle": "3.0.0",
-    "webdav": "4.8.0"
+    "webdav": "5.6.0"
   }
 }
