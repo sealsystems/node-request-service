@@ -1,3 +1,10 @@
+## 4.3.0 (2024-06-22)
+
+### Features
+
+
+Update sealsystems dependencies (patch/minor only) ([5c55eca](https://github.com/sealsystems/node-request-service/commit/5c55eca))
+
 ## 4.2.0 (2024-03-26)
 
 ### Features
