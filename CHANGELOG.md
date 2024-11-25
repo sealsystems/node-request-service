@@ -1,3 +1,10 @@
+## 4.3.1 (2024-11-25)
+
+### Bug Fixes
+
+
+Updated deps ([bb75d15](https://github.com/sealsystems/node-request-service/commit/bb75d15))
+
 ## 4.3.0 (2024-06-22)
 
 ### Features
