@@ -1,3 +1,10 @@
+## 4.3.2 (2025-01-08)
+
+### Bug Fixes
+
+
+updated deps ([afde216](https://github.com/sealsystems/node-request-service/commit/afde216))
+
 ## 4.3.1 (2024-11-25)
 
 ### Bug Fixes
