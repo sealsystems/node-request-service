@@ -1,3 +1,10 @@
+## 4.3.3 (2025-01-25)
+
+### Bug Fixes
+
+
+Update sealsystems dependencies (patch only) ([67822e3](https://github.com/sealsystems/node-request-service/commit/67822e3))
+
 ## 4.3.2 (2025-01-08)
 
 ### Bug Fixes
