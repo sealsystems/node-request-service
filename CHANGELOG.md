@@ -1,3 +1,10 @@
+## 4.3.4 (2025-08-04)
+
+### Bug Fixes
+
+
+updated deps ([ee69927](https://github.com/sealsystems/node-request-service/commit/ee69927))
+
 ## 4.3.3 (2025-01-25)
 
 ### Bug Fixes
